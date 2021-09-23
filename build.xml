@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<project name="BlankCanvasVideoStreamDemoPusher" default="jar" basedir=".">
+
+	<property name="jar.filename" value="bcv-wse-stream-demo-pusher.jar"/>
+	<property name="wowza.lib.dir" value="/Library/WowzaStreamingEngine/lib"/>
+	<property name="core.build.dir" value="bin"/>
+
+	<path id="wowza-classpath">
+		<fileset dir="${wowza.lib.dir}">
+			<include name="*.jar"/>
+		</fileset>
+	</path>
+
+
+	<target name="jar">
+		<mkdir dir="build/classes"/>
+		<javac target="1.8" source="1.8" srcdir="src" destdir="build/classes" debug="true" >
+			<classpath refid="wowza-classpath"/>
+		</javac>
+
+		<jar basedir="build/classes" jarfile="build/${jar.filename}">
+		</jar>
+	</target>
+
+	<target name="clean">
+		<delete dir="build/classes" />
+		<delete file="build/${jar.filename}" />
+	</target>
+	
+</project>
