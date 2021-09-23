@@ -4,20 +4,17 @@ import java.io.*;
 import java.util.*;
 
 import com.wowza.util.*;
-import com.wowza.wms.application.*;
 import com.wowza.wms.http.*;
 import com.wowza.wms.logging.*;
-import com.wowza.wms.stream.publish.*;
 import com.wowza.wms.vhost.*;
 
 // TODO: if duration triggers unpublish, needs removed from list of pushers
-// TODO: add a status action
-
 @SuppressWarnings("serial")
 public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	private static final String ACTION_STOP = "stop";
 	private static final String ACTION_STOP_ALL = "stop_all";
 	private static final String ACTION_START = "start";
+	private static final String ACTION_LIST = "list";
 	
 	private static final String QS_KEY_ACTION = "action";
 	private static final String QS_KEY_APP = "app";
@@ -39,6 +36,7 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	        add(ACTION_START);
 	        add(ACTION_STOP);
 	        add(ACTION_STOP_ALL);
+	        add(ACTION_LIST);
 	    }};
 	}
 
@@ -76,7 +74,10 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 				ret = doStop(cmd);
 			}
 			else if (ACTION_STOP_ALL.equals(cmd.action)) {
-				ret = doStopAll(cmd);
+				ret = doStopAll();
+			}
+			else if (ACTION_LIST.equals(cmd.action)) {
+				ret = doList();
 			}
 		}
 
@@ -149,6 +150,10 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 		if (ACTION_STOP_ALL.equals(cmd.action))	{
 			return ret;
 		}
+		// If action is ACTION_STOP_LIST, no need for more info
+		if (ACTION_LIST.equals(cmd.action))	{
+			return ret;
+		}
 		
 		
 		if (StringUtils.isEmpty(cmd.appName)) {
@@ -211,14 +216,14 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	private String reportActivePushers() {
 		String ret = "\nActivePushers:\n";
 		if (pushers.isEmpty()) {
-			ret += "- none\n";
+			ret += "  (none)\n";
 			return ret;
 		}
 		Set<String> keys = pushers.keySet();
 		for (String key : keys) {
 			Pusher pusher = pushers.get(key);
 			
-			ret += String.format("- %s/%s       (%s)\n", pusher.cmd.appName, pusher.cmd.streamName, pusher.cmd.fileName);			
+			ret += String.format("- src:%s  dest:%s/%s  dur:%d)\n", pusher.cmd.fileName, pusher.cmd.appName, pusher.cmd.streamName, pusher.cmd.duration );			
 		}
 		return ret;
 	}
@@ -241,13 +246,20 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 			ret.errors.add(String.format("%s: Push already exists: %s/%s\n", cmd.action, cmd.appName, cmd.streamName));
 			return ret;
 		}
+
+		Pusher pusher = new Pusher(vhost, cmd);
+		boolean success =  pusher.startPublishing();
 		
-		Pusher pusher = startPublishing(cmd);
-		
-		pushers.put(id, pusher);
-		
-		ret.report = String.format("%s: file:%s  %s/%s\n", cmd.action, cmd.fileName, cmd.appName, cmd.streamName);
-		ret.report += reportActivePushers();
+		String cmdInfo = String.format("%s: file:%s  %s/%s\n", cmd.action, cmd.fileName, cmd.appName, cmd.streamName);
+		if (success) {
+			pushers.put(id, pusher);
+			
+			ret.report = cmdInfo + reportActivePushers();			
+		} else {
+			String msg = "ERROR starting: "+ cmdInfo;
+			ret.errors.add(msg);
+			ret.report = msg + reportActivePushers();
+		}
 		
 		return ret;
 	}
@@ -263,93 +275,60 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 			return ret;
 		}
 		
-		stopPublishing(pusher);
+		boolean success = pusher.stopPublishing();
 		
-		pushers.remove(id);
+		String cmdInfo = String.format("doStop: %s  %s/%s\n", cmd.action, cmd.appName, cmd.streamName);
 
+		if (success) {
+			pushers.remove(id);
+
+			ret.report = cmdInfo + reportActivePushers();						
+		} else {
+			String msg = "ERROR stopping: "+ cmdInfo;
+			ret.errors.add(msg);
+			ret.report = msg + reportActivePushers();
+		}
 		
-		ret.report = String.format("doStop: %s  %s/%s\n", cmd.action, cmd.appName, cmd.streamName);
-		ret.report += reportActivePushers();
 		
 		return ret;
 	}
 
-	private ResponseAndErrors doStopAll(Command cmd) {
+	private ResponseAndErrors doStopAll() {
 		ResponseAndErrors ret = new ResponseAndErrors();
 
 		ret.report = String.format("%s: Stopped All Publishers: ", ACTION_STOP_ALL);
+		String errs = "";
 		
 		Set<String> keys = pushers.keySet();
 		for (String key : keys) {
 			Pusher pusher = pushers.get(key);
 			
-			stopPublishing(pusher);
-			
-			ret.report += (key+", ");
+			boolean success = pusher.stopPublishing();
+			if (success)
+				ret.report += (key+", ");
+			else 
+				errs += (key+", ");
  		}
 		ret.report += "\n";
+		
+		if (! StringUtils.isEmpty(errs))
+			ret.errors.add("Failed to stop publishers: "+errs);
 		
 		pushers.clear();
 		
 		return ret;
 	}
 
+	private ResponseAndErrors doList() {
+		ResponseAndErrors ret = new ResponseAndErrors();
+		
+		ret.report = reportActivePushers();
+
+		return ret;
+	}
+
 	
-	private Pusher startPublishing(Command cmd) {
-		Pusher pusher = new Pusher();
-		pusher.cmd = cmd;
-		pusher.app = vhost.getApplication(cmd.appName);
-		pusher.appInst = pusher.app.getAppInstance(cmd.appInstName);
-
-		try
-		{
-			String streamType = pusher.appInst.getStreamType();
-
-			pusher.streamPublisher = Stream.createInstance(vhost, cmd.appName, cmd.appInstName, cmd.streamName, streamType);
-			if (pusher.streamPublisher != null)
-			{
-
-				// set to false if want repeat
-				pusher.streamPublisher.setUnpublishOnEnd(true);
-				// set to true if want repeat
-				pusher.streamPublisher.setRepeat(false);
-
-				pusher.streamPublisher.setSendOnMetadata(true);
-
-				// file, start, length (TODO), reset
-				pusher.streamPublisher.play("mp4:"+cmd.fileName, 0, cmd.duration, true);
-			}
-		}
-		catch (Exception e)
-		{
-			e.printStackTrace();
-		}
-
-		return pusher;		
-	}
-
-	public void stopPublishing(Pusher cmd)
-	{
-		if (cmd.streamPublisher == null)
-			return;
-
-
-		if (cmd.streamPublisher.getPublisher()== null || cmd.streamPublisher.getPublisher().getAppInstance()== null)
-			logger.info(MODULE_NAME + ".stopPublishing: shutdown: " + cmd.streamPublisher.getName());
-		else
-			logger.info(MODULE_NAME + ".stopPublishing: shutdown: " + cmd.streamPublisher.getPublisher().getAppInstance().getContextStr() + "/" + cmd.streamPublisher.getName());
-
-		try
-		{
-			cmd.streamPublisher.closeAndWait();
-			cmd.streamPublisher = null;
-		}
-		catch (Exception e)
-		{
-			logger.info(MODULE_NAME + ".stopPublishing ", e);
-		}
-	}
-
+	
 
 
 	//
@@ -357,28 +336,6 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	// Internal classes
 	//
 	//
-	
-	class Command {
-		static final int DURATION_UNLIMITED = -1;
-		// config
-		String action;
-		String appName;
-		String appInstName = IApplicationInstance.DEFAULT_APPINSTANCE_NAME;
-		String fileName;
-		String streamName;
-		int duration = DURATION_UNLIMITED;
-	}
-
-
-	class Pusher {
-		public Stream streamPublisher;
-
-		Command cmd;
-		
-		// WSE
-		IApplication app;
-		IApplicationInstance appInst;
-	}
 	
 	class ResponseAndErrors {
 		String report = "";
