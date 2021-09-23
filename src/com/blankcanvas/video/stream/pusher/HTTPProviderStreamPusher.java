@@ -8,9 +8,8 @@ import com.wowza.wms.http.*;
 import com.wowza.wms.logging.*;
 import com.wowza.wms.vhost.*;
 
-// TODO: if duration triggers unpublish, needs removed from list of pushers
 @SuppressWarnings("serial")
-public class HTTPProviderStreamPusher extends HTTProvider2Base {
+public class HTTPProviderStreamPusher extends HTTProvider2Base  {
 	private static final String ACTION_STOP = "stop";
 	private static final String ACTION_STOP_ALL = "stop_all";
 	private static final String ACTION_START = "start";
@@ -185,51 +184,6 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	}
 
 	
-	//
-	// 
-	// Reporting
-	//
-	//
-	
-	
-	
-	private void reportFromErrors(Command cmd, ResponseAndErrors ret) {
-
-		//
-		// Now do the report from the errors
-		//
-
-		if (!ret.errors.isEmpty()) {
-			ret.report = String.format("404 ERROR %s %s to %s/%s\n", cmd.action, cmd.fileName, cmd.appName, cmd.streamName);
-			for (String err : ret.errors) {
-				ret.report += ("\n" + err);
-			}
-			ret.report += "\n";
-		}
-		
-		ret.report += reportActivePushers();
-
-	}
-
-
-
-	private String reportActivePushers() {
-		String ret = "\nActivePushers:\n";
-		if (pushers.isEmpty()) {
-			ret += "  (none)\n";
-			return ret;
-		}
-		Set<String> keys = pushers.keySet();
-		for (String key : keys) {
-			Pusher pusher = pushers.get(key);
-			
-			ret += String.format("- src:%s  dest:%s/%s  dur:%d)\n", pusher.cmd.fileName, pusher.cmd.appName, pusher.cmd.streamName, pusher.cmd.duration );			
-		}
-		return ret;
-	}
-
-
-
 	
 	
 	//
@@ -247,12 +201,20 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 			return ret;
 		}
 
-		Pusher pusher = new Pusher(vhost, cmd);
+		Pusher pusher = new Pusher(id, vhost, cmd);
 		boolean success =  pusher.startPublishing();
 		
 		String cmdInfo = String.format("%s: file:%s  %s/%s\n", cmd.action, cmd.fileName, cmd.appName, cmd.streamName);
 		if (success) {
 			pushers.put(id, pusher);
+			
+			if (pusher.cmd.duration >= 0) {
+				// a bit of a hack to shut down streams that have an expired duration
+				pusher.timer = new Timer();
+				// Start timer to trigger 1/2 second after unpublish
+				pusher.timer.schedule(new StreamExpiredTask(pusher), (pusher.cmd.duration * 1000) + 500);					
+			}
+						
 			
 			ret.report = cmdInfo + reportActivePushers();			
 		} else {
@@ -328,6 +290,51 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	}
 
 	
+	//
+	// 
+	// Reporting
+	//
+	//
+	
+	
+	
+	private void reportFromErrors(Command cmd, ResponseAndErrors ret) {
+
+		//
+		// Now do the report from the errors
+		//
+
+		if (!ret.errors.isEmpty()) {
+			ret.report = String.format("404 ERROR %s %s to %s/%s\n", cmd.action, cmd.fileName, cmd.appName, cmd.streamName);
+			for (String err : ret.errors) {
+				ret.report += ("\n" + err);
+			}
+			ret.report += "\n";
+		}
+		
+		ret.report += reportActivePushers();
+
+	}
+
+
+
+	private String reportActivePushers() {
+		String ret = "\nActivePushers:\n";
+		if (pushers.isEmpty()) {
+			ret += "  (none)\n";
+			return ret;
+		}
+		Set<String> keys = pushers.keySet();
+		for (String key : keys) {
+			Pusher pusher = pushers.get(key);
+			
+			ret += String.format("- src:%s  dest:%s/%s  dur:%d)\n", pusher.cmd.fileName, pusher.cmd.appName, pusher.cmd.streamName, pusher.cmd.duration );			
+		}
+		return ret;
+	}
+
+
+
 	
 
 
@@ -340,6 +347,24 @@ public class HTTPProviderStreamPusher extends HTTProvider2Base {
 	class ResponseAndErrors {
 		String report = "";
 		List<String> errors = new ArrayList<String>();
+	}
+
+
+	public class StreamExpiredTask extends TimerTask {
+		private Pusher pusher;
+
+		StreamExpiredTask(Pusher pusher) {
+			this.pusher = pusher;
+		}
+
+		@Override
+		public void run() {
+			logger.info("Kill timer triggered:"+pusher.id);
+			
+			// This is easy way to keep the list of pushers clean
+			pushers.remove(pusher.id);
+		}
+
 	}
 
 

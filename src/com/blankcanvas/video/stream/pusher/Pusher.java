@@ -1,5 +1,7 @@
 package com.blankcanvas.video.stream.pusher;
 
+import java.util.*;
+
 import com.wowza.wms.application.*;
 import com.wowza.wms.logging.*;
 import com.wowza.wms.stream.publish.*;
@@ -8,15 +10,21 @@ import com.wowza.wms.vhost.*;
 class Pusher {
 	static WMSLogger logger = HTTPProviderStreamPusher.logger;
 
+	String id;
+	Command cmd;
+	
 	Stream streamPublisher;
+	Timer timer = null;
 
-	Command cmd;	
 	// WSE
 	IApplication app;
 	IApplicationInstance appInst;
 	IVHost vhost;
+
+
 	
-	public Pusher(IVHost vhost, Command cmd) {
+	public Pusher(String id, IVHost vhost, Command cmd) {
+		this.id = id;
 		this.vhost = vhost;
 		this.cmd = cmd;
 		this.app = vhost.getApplication(cmd.appName);
@@ -38,7 +46,7 @@ class Pusher {
 				streamPublisher.setRepeat(false);
 
 				streamPublisher.setSendOnMetadata(true);
-
+				
 				// file, start, length (TODO), reset
 				success = streamPublisher.play("mp4:"+cmd.fileName, 0, cmd.duration, true);
 			}
@@ -51,7 +59,7 @@ class Pusher {
 
 		return success;		
 	}
-
+	
 	public boolean stopPublishing() {
 		boolean success = false;
 
@@ -62,6 +70,10 @@ class Pusher {
 		{
 			streamPublisher.closeAndWait();
 			streamPublisher = null;
+			
+			if (timer !=  null)
+				timer.cancel();
+			
 			success = true;
 		}
 		catch (Exception e)
