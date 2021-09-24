@@ -47,7 +47,7 @@ class Pusher {
 
 				streamPublisher.setSendOnMetadata(true);
 				
-				// file, start, length (TODO), reset
+				// file, start, length, reset
 				success = streamPublisher.play("mp4:"+cmd.fileName, 0, cmd.duration, true);
 			}
 		}
