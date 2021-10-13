@@ -43,7 +43,7 @@ class Pusher {
 				// set to false if want repeat
 				streamPublisher.setUnpublishOnEnd(true);
 				// set to true if want repeat
-				streamPublisher.setRepeat(false);
+				streamPublisher.setRepeat(true);
 
 				streamPublisher.setSendOnMetadata(true);
 				
