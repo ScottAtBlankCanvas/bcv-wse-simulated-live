@@ -36,14 +36,14 @@ However, if you need to control the starting and stopping of the stream, this mo
 To create a stream called myStream in the application ingest using a VOD called myVOD.mp4:
 
 ```
- curl <IP>:1935/bcv-sim-live\?file=myVOD.mp4\&app=ingest\&name=myStream\&action=start
+ curl <WSE_IP>:1935/bcv-sim-live\?file=myVOD.mp4\&app=ingest\&name=myStream\&action=start
 ```
  
 
 To stop it:
 
 ```
- curl <IP>:1935/bcv-sim-live\?app=ingest\&name=myStream\&action=stop
+ curl <WSE_IP>:1935/bcv-sim-live\?app=ingest\&name=myStream\&action=stop
 ```
 
 Stopping all simulated live streams:
@@ -55,7 +55,7 @@ Stopping all simulated live streams:
 Listing all started streams
 
 ```
- curl <IP>:1935/bcv-sim-live\?action=list
+ curl <WSE_IP>:1935/bcv-sim-live\?action=list
 ```
 
  
