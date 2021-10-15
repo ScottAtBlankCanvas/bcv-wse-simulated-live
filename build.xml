@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<project name="BlankCanvasVideoStreamDemoPusher" default="jar" basedir=".">
+<project name="BlankCanvasVideoSimulatedLive" default="jar" basedir=".">
 
-	<property name="jar.filename" value="bcv-wse-stream-demo-pusher.jar"/>
+	<property name="jar.filename" value="bcv-wse-simulated-live.jar"/>
 	<property name="wowza.lib.dir" value="/Library/WowzaStreamingEngine/lib"/>
 	<property name="core.build.dir" value="bin"/>
 
