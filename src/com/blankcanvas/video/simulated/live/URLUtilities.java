@@ -1,4 +1,4 @@
-package com.blankcanvas.video.stream.pusher;
+package com.blankcanvas.video.simulated.live;
 
 import java.util.*;
 
